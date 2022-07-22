@@ -28,6 +28,9 @@ public class StructType extends CompoundType {
         this.members = FVMAbi.convertToList(fields, refTypes);
     }
 
+    public StructType(List<FVMType> members) {
+        this.members = members;
+    }
     @Override
     public void encode(ScaleCodecWriter writer, Object arg) {
         if (((List<?>) arg).size() != members.size()) {

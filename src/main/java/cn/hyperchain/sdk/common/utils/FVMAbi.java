@@ -3,24 +3,23 @@ package cn.hyperchain.sdk.common.utils;
 import cn.hyperchain.sdk.fvm.scale.ScaleCodecReader;
 import cn.hyperchain.sdk.fvm.scale.ScaleCodecWriter;
 import cn.hyperchain.sdk.fvm.scale.writer.StringWriter;
-import cn.hyperchain.sdk.fvm.types.FVMType;
-import cn.hyperchain.sdk.fvm.types.PrimitiveType;
 import cn.hyperchain.sdk.fvm.types.CompoundType;
+import cn.hyperchain.sdk.fvm.types.FVMType;
+import cn.hyperchain.sdk.fvm.types.FixedLengthListType;
+import cn.hyperchain.sdk.fvm.types.PrimitiveType;
 import cn.hyperchain.sdk.fvm.types.StructType;
 import cn.hyperchain.sdk.fvm.types.UnfixedLengthListType;
-import cn.hyperchain.sdk.fvm.types.FixedLengthListType;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import org.apache.commons.codec.DecoderException;
-import org.apache.commons.codec.binary.Hex;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import org.apache.commons.codec.DecoderException;
+import org.apache.commons.codec.binary.Hex;
 
 public class FVMAbi {
     private HashMap<String, Method> methods;
@@ -116,7 +115,8 @@ public class FVMAbi {
                 case FixedLengthList: {
                     JsonElement arrLen = type.get("array_len");
                     if (arrLen == null) {
-                        throw new RuntimeException("illegal format for array type without field 'array_len' in ABI file.");
+                        throw new RuntimeException(
+                                "illegal format for array type without field 'array_len' in ABI file.");
                     }
                     return new FixedLengthListType(fields, refTypes, arrLen.getAsInt());
                 }
@@ -158,7 +158,8 @@ public class FVMAbi {
 
         // encode and write args.
         if (args.size() != method.input.size()) {
-            throw new RuntimeException("Arguments size wrong, expect: " + method.input.size() + ", but have: " + args.size());
+            throw new RuntimeException(
+                    "Arguments size wrong, expect: " + method.input.size() + ", but have: " + args.size());
         }
         for (int i = 0; i < method.input.size(); i++) {
             FVMType tp = method.input.get(i);
@@ -204,6 +205,58 @@ public class FVMAbi {
             } else {
                 throw new RuntimeException("multiple return value is not supported yet.");
             }
+        }
+    }
+
+    // encode for cpp
+    public static byte[] encodeRaw(String methodName, List<FVMType> typeList, List<Object> args) {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        ScaleCodecWriter codecWriter = new ScaleCodecWriter(buf);
+        StringWriter stringWriter = new StringWriter();
+
+        // write method name.
+        try {
+            if (methodName.length() != 0) {
+                stringWriter.write(codecWriter, methodName);
+            }
+        } catch (IOException e) {
+            // In fact, this exception will never happen.
+            throw new RuntimeException("Internal error: " + e.getMessage());
+        }
+        if (args.size() != typeList.size()) {
+            throw new RuntimeException(
+                    "Arguments size wrong, expect: " + typeList.size() + ", but have: " + args.size());
+        }
+        for (int i = 0; i < typeList.size(); i++) {
+            FVMType tp = typeList.get(i);
+            tp.encode(codecWriter, args.get(i));
+        }
+        return buf.toByteArray();
+    }
+
+    public static Object decodeRaw(String payload, List<FVMType> outputs) {
+        if (outputs.size() == 0) {
+            if (payload == null || payload.length() == 0 || payload.equals("0x0")) {
+                // if it's a void return(nothing to decode)
+                return null;
+            } else {
+                // if the abi has 0 return but payload is not "0x0"
+                throw new RuntimeException("Cannot parse result from a non-return method.");
+            }
+        } else if (outputs.size() == 1) {
+            byte[] bytes;
+            // remove appendix part.
+            try {
+                bytes = Hex.decodeHex(Utils.deleteHexPre(payload));
+            } catch (DecoderException e) {
+                throw new RuntimeException("Internal error: " + e.getMessage());
+            }
+            ScaleCodecReader codecReader = new ScaleCodecReader(bytes);
+
+            FVMType tp = outputs.get(0);
+            return tp.decode(codecReader);
+        } else {
+            throw new RuntimeException("multiple return value is not supported yet.");
         }
     }
 }

@@ -34,6 +34,11 @@ public class FixedLengthListType extends CompoundType {
         this.innerType = FVMAbi.convertToList(fields, refTypes).get(0);
     }
 
+    public FixedLengthListType(FVMType innerType, int length) {
+        this.innerType = innerType;
+        this.length = length;
+    }
+
     @Override
     public void encode(ScaleCodecWriter writer, Object arg) {
         if (((List<?>) arg).size() != length) {
